@@ -1,0 +1,53 @@
+version: '3.8'
+services:
+  # El "Oído": Recibe datos del Shelly
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto_broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  # El "Recuerdo": Guarda el histórico de datos
+  influxdb:
+    image: influxdb:1.8
+    container_name: influx_db
+    ports:
+      - "8086:8086"
+    volumes:
+      - influx_data:/var/lib/influxdb
+
+  # La "Cara": Tu App web
+  webapp:
+    image: python:3.9-slim
+    container_name: energy_app
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      sh -c "apt-get update && 
+             apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 shared-mime-info &&
+             pip install streamlit pandas influxdb plotly paho-mqtt weasyprint &&
+             streamlit run app.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - mosquitto
+      - influxdb
+  data_bridge:
+    image: python:3.9-slim
+    container_name: mqtt_to_influx
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: sh -c "pip install paho-mqtt==2.1.0 influxdb && python -u bridge.py"
+    depends_on:
+      - mosquitto
+      - influxdb
+volumes:
+  influx_data:
+
